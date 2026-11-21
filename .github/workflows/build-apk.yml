@@ -16,6 +16,10 @@ jobs:
     name: Build debug APK
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,12 +30,21 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Locate Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls -la "$ANDROID_HOME/cmdline-tools"
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found"
+            exit 1
+          fi
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "Found: $SDKMANAGER"
 
       - name: Install Android SDK packages
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -43,9 +56,13 @@ jobs:
           ls -lh
           unzip -l BYD_BMS_Android_Project.zip | head -40
 
-      - name: Unpack Android project and build APK
+      - name: Unpack Android project
         run: |
           unzip -q BYD_BMS_Android_Project.zip -d app-source
+          find app-source -maxdepth 3 -name settings.gradle -o -name settings.gradle.kts
+
+      - name: Build APK
+        run: |
           gradle -p app-source clean assembleDebug
 
       - name: Upload installable APK
